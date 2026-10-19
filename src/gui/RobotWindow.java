@@ -3,6 +3,7 @@ package gui;
 import robot.Board;
 import robot.DepositedObject;
 import robot.Robot;
+import robot.RobotObserver;
 
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
@@ -25,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Swing controls around the Nicellipse board. Calls the existing Robot.execute(). */
-public class RobotWindow extends JFrame {
+public class RobotWindow extends JFrame implements RobotObserver {
     private static final String EXAMPLE = String.join("\n",
             "base 4 1", "dir EAST", "mov 2", "mov 3", "dir NORTH", "mov 3");
 
@@ -47,6 +48,7 @@ public class RobotWindow extends JFrame {
     public RobotWindow() {
         super("Robot Explorer - Nicellipse");
         robot = new Robot(new Board());
+        robot.addObserver(this);
         boardView = new RobotBoardView(robot);
         timer = new Timer(550, event -> executeNext());
 
@@ -247,7 +249,9 @@ public class RobotWindow extends JFrame {
 
     private void resetRobot() {
         stopTimer();
+        robot.removeObserver(this);
         robot = new Robot(new Board());
+        robot.addObserver(this);
         boardView.setRobot(robot);
         invalidatePreparedScript();
         stepLabel.setText("Ready");
@@ -293,5 +297,12 @@ public class RobotWindow extends JFrame {
     private void log(String message) {
         logArea.append(message + "\n");
         logArea.setCaretPosition(logArea.getDocument().getLength());
+    }
+    //when something in the model changes the view who implements the observer will detect automatically
+    @Override
+    public void robotChanged(Robot robot) {
+        // this schedules the given Runnable to run on the Swing Event Dispatch Thread (EDT) as soon as possible. Swing components must be created/updated on the EDT to avoid race conditions and UI corruption.
+
+        javax.swing.SwingUtilities.invokeLater(this::updateDisplay);
     }
 }

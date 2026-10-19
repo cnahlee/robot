@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Robot {
     private final Board board;
@@ -14,6 +15,28 @@ public class Robot {
     private final List<String> history = new ArrayList<>();
     private boolean recordingActive = true;
     private static final Set<String> CONTROL_COMMANDS = Set.of("startM", "stopM", "resM", "replay");
+
+
+    //1-create a list of robot Observer
+    private final List<RobotObserver> observers = new CopyOnWriteArrayList<>();
+
+    public void addObserver(RobotObserver o)
+    {
+        if(o!=null)
+            observers.add(o);
+    }
+
+    public void removeObserver(RobotObserver o)
+    {
+        observers.remove(o);
+    }
+
+    private void notifyObserver()
+    {
+        for(RobotObserver o:observers) {
+            o.robotChanged(this);
+        }
+    }
 
     public Robot(Board board) {
         if (board == null) {
@@ -42,6 +65,7 @@ public class Robot {
         board.clearElement(position);
         position = newPosition;
         board.placeElement(position, this);
+        notifyObserver();
     }
 
     public Direction getDirection() {
@@ -53,6 +77,7 @@ public class Robot {
             throw new IllegalArgumentException("Direction must not be null.");
         }
         this.direction = direction;
+        notifyObserver();
     }
 
     public Board getBoard() {
@@ -75,6 +100,7 @@ public class Robot {
         }
         board.removeDepositedObject(position);
         carriedObject = object;
+        notifyObserver();
     }
 
     public void drop() {
@@ -86,6 +112,7 @@ public class Robot {
         }
         board.placeElement(position, carriedObject);
         carriedObject = null;
+        notifyObserver();
     }
 
     public void move(int distance) {
@@ -107,6 +134,7 @@ public class Robot {
                 throw new IllegalStateException("Unknown direction: " + direction);
         }
         setPosition(destination);
+        notifyObserver();
     }
 
     public void execute(String script) {
@@ -130,14 +158,17 @@ public class Robot {
 
     public void startM() {
         recordingActive = true;
+        notifyObserver();
     }
 
     public void stopM() {
         recordingActive = false;
+        notifyObserver();
     }
 
     public void resM() {
         history.clear();
+        notifyObserver();
     }
 
     public void replay() {
