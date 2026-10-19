@@ -34,7 +34,12 @@ public class Robot {
     private void notifyObserver()
     {
         for(RobotObserver o:observers) {
-            o.robotChanged(this);
+            try {
+                o.robotChanged(this);
+            } catch (RuntimeException ex) {
+                // protect notifications from observer exceptions
+                ex.printStackTrace();
+            }
         }
     }
 
@@ -133,8 +138,8 @@ public class Robot {
             default:
                 throw new IllegalStateException("Unknown direction: " + direction);
         }
+        // setPosition will already call notifyObserver(), so no additional notify here
         setPosition(destination);
-        notifyObserver();
     }
 
     public void execute(String script) {
@@ -153,6 +158,11 @@ public class Robot {
             if (recordingActive && !CONTROL_COMMANDS.contains(commandName)) {
                 history.add(line);
             }
+            // notifyObserver() is not strictly necessary here because the command
+            // implementations call model mutators (setPosition/setDirection/drop/pickUp)
+            // which already call notifyObserver(). If you prefer guaranteed updates
+            // after every command, you could uncomment the next line:
+            // notifyObserver();
         }
     }
 
@@ -175,6 +185,8 @@ public class Robot {
         boolean previousState = recordingActive;
         try {
             recordingActive = false;
+            // notify that recording was disabled for clarity (optional)
+            notifyObserver();
             List<String> snapshot = new ArrayList<>(history);
             for (String commandLine : snapshot) {
                 Command command = CommandFactory.create(commandLine);
@@ -182,6 +194,7 @@ public class Robot {
             }
         } finally {
             recordingActive = previousState;
+            notifyObserver();
         }
     }
 
