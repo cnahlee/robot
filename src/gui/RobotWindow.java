@@ -37,13 +37,17 @@ public class RobotWindow extends JFrame implements RobotObserver {
     private final JLabel positionLabel = new JLabel();
     private final JLabel directionLabel = new JLabel();
     private final JLabel carryingLabel = new JLabel();
+    private final JLabel recordingLabel = new JLabel();
     private final JLabel stepLabel = new JLabel("Ready");
     private final JButton runButton = new JButton("Run script");
-//this is the list of commands that is going to be extracted and used
+    //this is the list of commands that is going to be extracted and used
     private final List<String> commands = new ArrayList<>();
     private String preparedScript;
     private int nextCommand = 0;
     private final Timer timer;
+
+    // flag used when the GUI plays back the robot's saved history
+    private boolean replayingHistory = false;
 
     public RobotWindow() {
         super("Robot Explorer - Nicellipse");
@@ -103,7 +107,7 @@ public class RobotWindow extends JFrame implements RobotObserver {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBackground(Color.WHITE);
-        panel.setPreferredSize(new Dimension(340, 610));
+        panel.setPreferredSize(new Dimension(340, 650));
         panel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createEmptyBorder(0, 0, 18, 18),
                 BorderFactory.createEmptyBorder(12, 12, 12, 12)));
@@ -112,6 +116,7 @@ public class RobotWindow extends JFrame implements RobotObserver {
         panel.add(positionLabel);
         panel.add(directionLabel);
         panel.add(carryingLabel);
+        panel.add(recordingLabel);
         panel.add(new JLabel(" "));
 
         panel.add(sectionTitle("Script (one command per line)"));
@@ -144,6 +149,44 @@ public class RobotWindow extends JFrame implements RobotObserver {
         execution.add(exampleButton);
         panel.add(execution);
         panel.add(stepLabel);
+
+        // Recording control buttons (start/stop/reset/replay)
+        panel.add(new JLabel(" "));
+        panel.add(sectionTitle("Recording controls"));
+        JPanel recPanel = new JPanel(new GridLayout(2, 2, 7, 7));
+        recPanel.setOpaque(false);
+        recPanel.setMaximumSize(new Dimension(500, 82));
+        JButton startRec = new JButton("Start recording");
+        JButton stopRec = new JButton("Stop recording");
+        JButton resRec = new JButton("Reset history");
+        JButton replayRec = new JButton("Replay history");
+        startRec.addActionListener(e -> {
+            stopTimer();
+            robot.startM();
+            updateDisplay();
+            log("Recording enabled");
+        });
+        stopRec.addActionListener(e -> {
+            stopTimer();
+            robot.stopM();
+            updateDisplay();
+            log("Recording disabled");
+        });
+        resRec.addActionListener(e -> {
+            stopTimer();
+            robot.resM();
+            log("History cleared");
+            updateDisplay();
+        });
+        replayRec.addActionListener(e -> {
+            stopTimer();
+            playHistory();
+        });
+        recPanel.add(startRec);
+        recPanel.add(stopRec);
+        recPanel.add(resRec);
+        recPanel.add(replayRec);
+        panel.add(recPanel);
 
         panel.add(new JLabel(" "));
         panel.add(sectionTitle("Objects (demo controls)"));
@@ -225,6 +268,12 @@ public class RobotWindow extends JFrame implements RobotObserver {
         if (nextCommand >= commands.size()) {
             stopTimer();
             log("Script completed");
+            if (replayingHistory) {
+                robot.startM();
+                replayingHistory = false;
+                updateDisplay();
+                log("Recording re-enabled after replay");
+            }
             return;
         }
 
@@ -238,6 +287,12 @@ public class RobotWindow extends JFrame implements RobotObserver {
             if (nextCommand == commands.size()) {
                 stopTimer();
                 log("Script completed");
+                if (replayingHistory) {
+                    robot.startM();
+                    replayingHistory = false;
+                    updateDisplay();
+                    log("Recording re-enabled after replay");
+                }
             }
         } catch (RuntimeException ex) {
             stopTimer();
@@ -245,6 +300,26 @@ public class RobotWindow extends JFrame implements RobotObserver {
             JOptionPane.showMessageDialog(this, ex.getMessage(),
                     "Command error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private void playHistory() {
+        List<String> history = robot.getHistory();
+        if (history.isEmpty()) {
+            log("No recorded history to replay.");
+            return;
+        }
+        // Prepare GUI command list from robot history and disable recording while playing
+        commands.clear();
+        commands.addAll(history);
+        preparedScript = null;
+        nextCommand = 0;
+        robot.stopM();
+        replayingHistory = true;
+        scriptEditor.setEditable(false);
+        runButton.setText("Pause");
+        timer.start();
+        log("Replaying history (" + commands.size() + " instructions)");
+        updateDisplay();
     }
 
     private void resetRobot() {
@@ -270,6 +345,13 @@ public class RobotWindow extends JFrame implements RobotObserver {
         timer.stop();
         runButton.setText("Run script");
         scriptEditor.setEditable(true);
+        // if user paused an in-GUI replay, make sure recording is re-enabled
+        if (replayingHistory) {
+            robot.startM();
+            replayingHistory = false;
+            updateDisplay();
+            log("Recording re-enabled after pause");
+        }
     }
 
     private void performAction(String name, Runnable action) {
@@ -285,6 +367,12 @@ public class RobotWindow extends JFrame implements RobotObserver {
         }
     }
 
+    @Override
+    public void robotChanged(Robot robot) {
+        // this schedules the given Runnable to run on the Swing Event Dispatch Thread (EDT) as soon as possible. Swing components must be created/updated on the EDT to avoid race conditions and [...]
+        javax.swing.SwingUtilities.invokeLater(this::updateDisplay);
+    }
+
     private void updateDisplay() {
         positionLabel.setText("Position: (" + robot.getPosition().getX()
                 + ", " + robot.getPosition().getY() + ")");
@@ -297,12 +385,5 @@ public class RobotWindow extends JFrame implements RobotObserver {
     private void log(String message) {
         logArea.append(message + "\n");
         logArea.setCaretPosition(logArea.getDocument().getLength());
-    }
-    //when something in the model changes the view who implements the observer will detect automatically
-    @Override
-    public void robotChanged(Robot robot) {
-        // this schedules the given Runnable to run on the Swing Event Dispatch Thread (EDT) as soon as possible. Swing components must be created/updated on the EDT to avoid race conditions and UI corruption.
-
-        javax.swing.SwingUtilities.invokeLater(this::updateDisplay);
     }
 }
